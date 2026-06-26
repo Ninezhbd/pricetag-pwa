@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Price Tag</title>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #F5F1E8; font-family: Arial; padding: 16px; color: #1E1E2E; }
@@ -14,24 +13,18 @@
         .result { padding: 16px; border: 2px solid #1E1E2E; border-radius: 12px; margin-top: 16px; }
         .hidden { display: none; }
         h2 { margin: 16px 0 8px; }
-        #ocrStatus { color: #666; font-size: 14px; text-align: center; margin: 8px 0; }
+        #preview { width: 100%; border-radius: 12px; margin: 8px 0; }
     </style>
 </head>
 <body>
     <div id="profileScreen">
         <h2>Настройка профиля</h2>
-        <label>Зарплата в месяц (руб.):</label>
-        <input id="salary" type="number" placeholder="80000">
-        <label>Рабочих часов в месяц:</label>
-        <input id="hours" type="number" value="160" placeholder="160">
-        <label>Аренда:</label>
-        <input id="rent" type="number" placeholder="25000">
-        <label>Еда:</label>
-        <input id="food" type="number" placeholder="15000">
-        <label>Транспорт:</label>
-        <input id="transport" type="number" placeholder="5000">
-        <label>Кредиты:</label>
-        <input id="debts" type="number" placeholder="10000">
+        <input id="salary" type="number" placeholder="Зарплата (80000)">
+        <input id="hours" type="number" value="160" placeholder="Часов в месяц">
+        <input id="rent" type="number" placeholder="Аренда">
+        <input id="food" type="number" placeholder="Еда">
+        <input id="transport" type="number" placeholder="Транспорт">
+        <input id="debts" type="number" placeholder="Кредиты">
         <button onclick="saveProfile()">Сохранить</button>
         <p id="profileMsg"></p>
     </div>
@@ -39,13 +32,16 @@
     <div id="calcScreen" class="hidden">
         <h2>Расчёт цены</h2>
         <p id="rateInfo"></p>
-        <label>Цена товара (руб.):</label>
-        <input id="price" type="number" placeholder="2999">
+        <input id="price" type="number" placeholder="Цена товара (2999)">
         <button onclick="calculate()">Рассчитать</button>
         <div id="resultBox" class="result hidden"></div>
         <button onclick="openCamera()">📸 Сканировать ценник</button>
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="onFileSelected(this)" class="hidden">
-        <p id="ocrStatus" class="hidden">🔍 Распознаю цену...</p>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="onPhotoTaken(this)" class="hidden">
+        <img id="preview" class="hidden" alt="Фото ценника">
+        <div id="photoActions" class="hidden">
+            <input id="priceFromPhoto" type="number" placeholder="Введите цену с фото">
+            <button onclick="calculateFromPhoto()">✅ Подтвердить</button>
+        </div>
         <button onclick="showProfile()">⚙️ Изменить профиль</button>
     </div>
 
@@ -62,17 +58,14 @@
             if (!s || !h) { document.getElementById('profileMsg').innerText = 'Введите зарплату и часы!'; return; }
             let net = s * 0.87, expenses = r + f + t + d, free = net - expenses, rate = h > 0 ? free / h : 0;
             if (free <= 0) { document.getElementById('profileMsg').innerText = 'Расходы превышают доходы!'; return; }
-            profile = { s, h, r, f, t, d, net, expenses, free, rate };
+            profile = { rate };
             document.getElementById('profileMsg').innerText = '✅ 1 час = ' + rate.toFixed(2) + ' руб.';
             document.getElementById('profileScreen').classList.add('hidden');
             document.getElementById('calcScreen').classList.remove('hidden');
             document.getElementById('rateInfo').innerText = 'Стоимость часа: ' + rate.toFixed(2) + ' руб.';
         }
 
-        function showProfile() {
-            document.getElementById('calcScreen').classList.add('hidden');
-            document.getElementById('profileScreen').classList.remove('hidden');
-        }
+        function showProfile() { document.getElementById('calcScreen').classList.add('hidden'); document.getElementById('profileScreen').classList.remove('hidden'); }
 
         function calculate(priceVal) {
             let price = priceVal || +document.getElementById('price').value;
@@ -88,59 +81,20 @@
             document.getElementById('resultBox').classList.remove('hidden');
         }
 
-        function openCamera() {
-            document.getElementById('cameraInput').click();
-        }
+        function openCamera() { document.getElementById('cameraInput').click(); }
 
-        async function onFileSelected(input) {
+        function onPhotoTaken(input) {
             if (!input.files || !input.files[0]) return;
-
-            let status = document.getElementById('ocrStatus');
-            status.classList.remove('hidden');
-            status.innerText = '🔍 Распознаю цену...';
-
-            try {
-                let imageUrl = URL.createObjectURL(input.files[0]);
-                
-                // Запускаем OCR через Tesseract.js (русский + английский)
-                let worker = await Tesseract.createWorker('rus+eng');
-                let result = await worker.recognize(imageUrl);
-                let text = result.data.text;
-                await worker.terminate();
-                URL.revokeObjectURL(imageUrl);
-
-                // Ищем цену в тексте
-                let price = extractPrice(text);
-                
-                if (price) {
-                    status.innerText = '✅ Распознана цена: ' + price + ' руб.';
-                    calculate(price);
-                } else {
-                    status.innerText = '❌ Цена не найдена. Введите вручную.';
-                }
-            } catch(e) {
-                status.innerText = '❌ Ошибка распознавания. Введите вручную.';
-            }
+            let preview = document.getElementById('preview');
+            preview.src = URL.createObjectURL(input.files[0]);
+            preview.classList.remove('hidden');
+            document.getElementById('photoActions').classList.remove('hidden');
+            document.getElementById('priceFromPhoto').focus();
         }
 
-        function extractPrice(text) {
-            // Ищем цену в форматах: 2999, 2 999, 2999.99, 2999 руб, 2 999 ₽
-            let patterns = [
-                /(\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?)\s*(?:руб|₽|rub|р)/i,
-                /(?:руб|₽|rub|р)\s*(\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?)/i,
-                /(\d{2,5}(?:[.,]\d{2})?)/g
-            ];
-
-            for (let pattern of patterns) {
-                let matches = text.matchAll(pattern);
-                for (let match of matches) {
-                    let value = match[1] || match[0];
-                    value = value.replace(/\s/g, '').replace(',', '.');
-                    let price = parseFloat(value);
-                    if (price > 1 && price < 10000000) return price;
-                }
-            }
-            return null;
+        function calculateFromPhoto() {
+            let price = +document.getElementById('priceFromPhoto').value;
+            if (price) calculate(price);
         }
     </script>
 </body>
