@@ -1,67 +1,126 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="ru">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PriceTagPWA</title>
-    <base href="/" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <link href="PriceTagPWA.styles.css" rel="stylesheet" />
-    <link href="manifest.webmanifest" rel="manifest" />
-    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Tag</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #F5F1E8; font-family: Arial; padding: 16px; color: #1E1E2E; }
+        input { width: 100%; padding: 12px; margin: 6px 0; border: 1px solid #999; border-radius: 10px; background: transparent; font-size: 16px; }
+        button { width: 100%; padding: 14px; margin: 8px 0; border: 2px solid #1E1E2E; border-radius: 12px; background: transparent; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .result { padding: 16px; border: 2px solid #1E1E2E; border-radius: 12px; margin-top: 16px; }
+        .hidden { display: none; }
+        h2 { margin: 16px 0 8px; }
+    </style>
 </head>
-
 <body>
-    <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
+    <!-- Экран профиля -->
+    <div id="profileScreen">
+        <h2>Настройка профиля</h2>
+        <label>Зарплата в месяц (руб.):</label>
+        <input id="salary" type="number" placeholder="80000">
+        <label>Рабочих часов в месяц:</label>
+        <input id="hours" type="number" value="160" placeholder="160">
+        <label>Аренда:</label>
+        <input id="rent" type="number" placeholder="25000">
+        <label>Еда:</label>
+        <input id="food" type="number" placeholder="15000">
+        <label>Транспорт:</label>
+        <input id="transport" type="number" placeholder="5000">
+        <label>Кредиты:</label>
+        <input id="debts" type="number" placeholder="10000">
+        <button onclick="saveProfile()">Сохранить</button>
+        <p id="profileMsg"></p>
     </div>
 
-    <div id="blazor-error-ui">
-        An unhandled error has occurred.
-        <a href="." class="reload">Reload</a>
-        <span class="dismiss">🗙</span>
+    <!-- Экран расчёта -->
+    <div id="calcScreen" class="hidden">
+        <h2>Расчёт цены</h2>
+        <p id="rateInfo"></p>
+        <label>Цена товара (руб.):</label>
+        <input id="price" type="number" placeholder="2999">
+        <button onclick="calculate()">Рассчитать</button>
+        <div id="resultBox" class="result hidden"></div>
+        <button onclick="openCamera()">📸 Сканировать ценник</button>
+        <button onclick="showProfile()">⚙️ Изменить профиль</button>
+        <video id="video" width="100%" autoplay playsinline class="hidden"></video>
+        <button id="captureBtn" onclick="capturePhoto()" class="hidden">Сделать снимок</button>
     </div>
-    <script src="_framework/blazor.webassembly.js"></script>
-    <script>navigator.serviceWorker.register('service-worker.js');</script>
+
     <script>
+        let profile = null;
         let stream = null;
 
-        async function startCamera() {
+        function saveProfile() {
+            let s = +document.getElementById('salary').value;
+            let h = +document.getElementById('hours').value;
+            let r = +document.getElementById('rent').value;
+            let f = +document.getElementById('food').value;
+            let t = +document.getElementById('transport').value;
+            let d = +document.getElementById('debts').value;
+
+            if (!s || !h) { document.getElementById('profileMsg').innerText = 'Введите зарплату и часы!'; return; }
+
+            let net = s * 0.87;
+            let expenses = r + f + t + d;
+            let free = net - expenses;
+            let rate = h > 0 ? free / h : 0;
+
+            if (free <= 0) { document.getElementById('profileMsg').innerText = 'Расходы превышают доходы!'; return; }
+
+            profile = { salary: s, hours: h, rent: r, food: f, transport: t, debts: d, net, expenses, free, rate };
+            document.getElementById('profileMsg').innerText = '✅ 1 час = ' + rate.toFixed(2) + ' руб.';
+            document.getElementById('profileScreen').classList.add('hidden');
+            document.getElementById('calcScreen').classList.remove('hidden');
+            document.getElementById('rateInfo').innerText = 'Стоимость часа: ' + rate.toFixed(2) + ' руб.';
+        }
+
+        function showProfile() {
+            document.getElementById('calcScreen').classList.add('hidden');
+            document.getElementById('profileScreen').classList.remove('hidden');
+        }
+
+        function calculate() {
+            let price = +document.getElementById('price').value;
+            if (!profile || !price) return;
+
+            let hours = price / profile.rate;
+            let days = hours / 8;
+            let weeks = hours / 40;
+
+            document.getElementById('resultBox').innerHTML = 
+                '<p><strong>💰 Цена:</strong> ' + price + ' руб.</p>' +
+                '<p><strong>⏱ Часов жизни:</strong> ' + hours.toFixed(2) + '</p>' +
+                '<p><strong>📅 Рабочих дней:</strong> ' + days.toFixed(1) + '</p>' +
+                '<p><strong>📆 Рабочих недель:</strong> ' + weeks.toFixed(2) + '</p>' +
+                '<p><em>«Ты готов отдать столько жизни за эту вещь?»</em></p>';
+            document.getElementById('resultBox').classList.remove('hidden');
+        }
+
+        async function openCamera() {
+            let video = document.getElementById('video');
+            video.classList.remove('hidden');
+            document.getElementById('captureBtn').classList.remove('hidden');
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
-                const video = document.getElementById('video');
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 video.srcObject = stream;
-            } catch (err) {
-                alert('Не удалось открыть камеру: ' + err.message);
+            } catch(e) {
+                alert('Камера недоступна');
             }
         }
 
         function capturePhoto() {
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            return canvas.toDataURL('image/jpeg');
-        }
-
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
+            let price = prompt('Введите цену с ценника:');
+            if (price) {
+                document.getElementById('price').value = price;
+                calculate();
             }
+            if (stream) { stream.getTracks().forEach(t => t.stop()); }
+            document.getElementById('video').classList.add('hidden');
+            document.getElementById('captureBtn').classList.add('hidden');
         }
     </script>
 </body>
-
 </html>
