@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Price Tag</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #F5F1E8; font-family: Arial; padding: 16px; color: #1E1E2E; }
@@ -13,7 +14,7 @@
         .result { padding: 16px; border: 2px solid #1E1E2E; border-radius: 12px; margin-top: 16px; }
         .hidden { display: none; }
         h2 { margin: 16px 0 8px; }
-        video { width: 100%; border-radius: 12px; margin: 8px 0; }
+        #ocrStatus { color: #666; font-size: 14px; text-align: center; margin: 8px 0; }
     </style>
 </head>
 <body>
@@ -44,13 +45,12 @@
         <div id="resultBox" class="result hidden"></div>
         <button onclick="openCamera()">📸 Сканировать ценник</button>
         <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="onFileSelected(this)" class="hidden">
-        <video id="video" class="hidden" autoplay playsinline></video>
-        <button id="captureBtn" class="hidden" onclick="capturePhoto()">📷 Сделать снимок</button>
+        <p id="ocrStatus" class="hidden">🔍 Распознаю цену...</p>
         <button onclick="showProfile()">⚙️ Изменить профиль</button>
     </div>
 
     <script>
-        let profile = null, stream = null;
+        let profile = null;
 
         function saveProfile() {
             let s = +document.getElementById('salary').value;
@@ -77,6 +77,7 @@
         function calculate(priceVal) {
             let price = priceVal || +document.getElementById('price').value;
             if (!profile || !price) return;
+            document.getElementById('price').value = price;
             let hours = price / profile.rate, days = hours / 8, weeks = hours / 40;
             document.getElementById('resultBox').innerHTML =
                 '<p><strong>💰 Цена:</strong> ' + price + ' руб.</p>' +
@@ -91,41 +92,55 @@
             document.getElementById('cameraInput').click();
         }
 
-        function onFileSelected(input) {
-            if (input.files && input.files[0]) {
-                let price = prompt('📸 Введите цену с ценника:', '');
+        async function onFileSelected(input) {
+            if (!input.files || !input.files[0]) return;
+
+            let status = document.getElementById('ocrStatus');
+            status.classList.remove('hidden');
+            status.innerText = '🔍 Распознаю цену...';
+
+            try {
+                let imageUrl = URL.createObjectURL(input.files[0]);
+                
+                // Запускаем OCR через Tesseract.js (русский + английский)
+                let worker = await Tesseract.createWorker('rus+eng');
+                let result = await worker.recognize(imageUrl);
+                let text = result.data.text;
+                await worker.terminate();
+                URL.revokeObjectURL(imageUrl);
+
+                // Ищем цену в тексте
+                let price = extractPrice(text);
+                
                 if (price) {
-                    document.getElementById('price').value = price;
-                    calculate(+price);
+                    status.innerText = '✅ Распознана цена: ' + price + ' руб.';
+                    calculate(price);
+                } else {
+                    status.innerText = '❌ Цена не найдена. Введите вручную.';
+                }
+            } catch(e) {
+                status.innerText = '❌ Ошибка распознавания. Введите вручную.';
+            }
+        }
+
+        function extractPrice(text) {
+            // Ищем цену в форматах: 2999, 2 999, 2999.99, 2999 руб, 2 999 ₽
+            let patterns = [
+                /(\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?)\s*(?:руб|₽|rub|р)/i,
+                /(?:руб|₽|rub|р)\s*(\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?)/i,
+                /(\d{2,5}(?:[.,]\d{2})?)/g
+            ];
+
+            for (let pattern of patterns) {
+                let matches = text.matchAll(pattern);
+                for (let match of matches) {
+                    let value = match[1] || match[0];
+                    value = value.replace(/\s/g, '').replace(',', '.');
+                    let price = parseFloat(value);
+                    if (price > 1 && price < 10000000) return price;
                 }
             }
-        }
-
-        async function startLiveCamera() {
-            let video = document.getElementById('video');
-            video.classList.remove('hidden');
-            document.getElementById('captureBtn').classList.remove('hidden');
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                video.srcObject = stream;
-            } catch(e) {
-                alert('Камера недоступна: ' + e.message);
-            }
-        }
-
-        function capturePhoto() {
-            let price = prompt('📸 Введите цену с ценника:', '');
-            if (price) {
-                document.getElementById('price').value = price;
-                calculate(+price);
-            }
-            stopCamera();
-        }
-
-        function stopCamera() {
-            if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-            document.getElementById('video').classList.add('hidden');
-            document.getElementById('captureBtn').classList.add('hidden');
+            return null;
         }
     </script>
 </body>
