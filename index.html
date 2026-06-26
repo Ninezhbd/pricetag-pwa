@@ -4,19 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Price Tag</title>
-    <link rel="manifest" href="manifest.webmanifest">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #F5F1E8; font-family: Arial; padding: 16px; color: #1E1E2E; }
-        input { width: 100%; padding: 12px; margin: 6px 0; border: 1px solid #999; border-radius: 10px; background: transparent; font-size: 16px; }
-        button { width: 100%; padding: 14px; margin: 8px 0; border: 2px solid #1E1E2E; border-radius: 12px; background: transparent; font-size: 16px; font-weight: bold; cursor: pointer; }
+        input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px; font-size: 16px; }
+        input { border: 1px solid #999; background: transparent; }
+        button { border: 2px solid #1E1E2E; background: transparent; font-weight: bold; cursor: pointer; }
         .result { padding: 16px; border: 2px solid #1E1E2E; border-radius: 12px; margin-top: 16px; }
         .hidden { display: none; }
         h2 { margin: 16px 0 8px; }
+        video { width: 100%; border-radius: 12px; margin: 8px 0; }
     </style>
 </head>
 <body>
-    <!-- Экран профиля -->
     <div id="profileScreen">
         <h2>Настройка профиля</h2>
         <label>Зарплата в месяц (руб.):</label>
@@ -35,7 +35,6 @@
         <p id="profileMsg"></p>
     </div>
 
-    <!-- Экран расчёта -->
     <div id="calcScreen" class="hidden">
         <h2>Расчёт цены</h2>
         <p id="rateInfo"></p>
@@ -44,33 +43,26 @@
         <button onclick="calculate()">Рассчитать</button>
         <div id="resultBox" class="result hidden"></div>
         <button onclick="openCamera()">📸 Сканировать ценник</button>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="onFileSelected(this)" class="hidden">
+        <video id="video" class="hidden" autoplay playsinline></video>
+        <button id="captureBtn" class="hidden" onclick="capturePhoto()">📷 Сделать снимок</button>
         <button onclick="showProfile()">⚙️ Изменить профиль</button>
-        <video id="video" width="100%" autoplay playsinline class="hidden"></video>
-        <button id="captureBtn" onclick="capturePhoto()" class="hidden">Сделать снимок</button>
     </div>
 
     <script>
-        let profile = null;
-        let stream = null;
+        let profile = null, stream = null;
 
         function saveProfile() {
             let s = +document.getElementById('salary').value;
             let h = +document.getElementById('hours').value;
-            let r = +document.getElementById('rent').value;
-            let f = +document.getElementById('food').value;
-            let t = +document.getElementById('transport').value;
-            let d = +document.getElementById('debts').value;
-
+            let r = +document.getElementById('rent').value || 0;
+            let f = +document.getElementById('food').value || 0;
+            let t = +document.getElementById('transport').value || 0;
+            let d = +document.getElementById('debts').value || 0;
             if (!s || !h) { document.getElementById('profileMsg').innerText = 'Введите зарплату и часы!'; return; }
-
-            let net = s * 0.87;
-            let expenses = r + f + t + d;
-            let free = net - expenses;
-            let rate = h > 0 ? free / h : 0;
-
+            let net = s * 0.87, expenses = r + f + t + d, free = net - expenses, rate = h > 0 ? free / h : 0;
             if (free <= 0) { document.getElementById('profileMsg').innerText = 'Расходы превышают доходы!'; return; }
-
-            profile = { salary: s, hours: h, rent: r, food: f, transport: t, debts: d, net, expenses, free, rate };
+            profile = { s, h, r, f, t, d, net, expenses, free, rate };
             document.getElementById('profileMsg').innerText = '✅ 1 час = ' + rate.toFixed(2) + ' руб.';
             document.getElementById('profileScreen').classList.add('hidden');
             document.getElementById('calcScreen').classList.remove('hidden');
@@ -82,15 +74,11 @@
             document.getElementById('profileScreen').classList.remove('hidden');
         }
 
-        function calculate() {
-            let price = +document.getElementById('price').value;
+        function calculate(priceVal) {
+            let price = priceVal || +document.getElementById('price').value;
             if (!profile || !price) return;
-
-            let hours = price / profile.rate;
-            let days = hours / 8;
-            let weeks = hours / 40;
-
-            document.getElementById('resultBox').innerHTML = 
+            let hours = price / profile.rate, days = hours / 8, weeks = hours / 40;
+            document.getElementById('resultBox').innerHTML =
                 '<p><strong>💰 Цена:</strong> ' + price + ' руб.</p>' +
                 '<p><strong>⏱ Часов жизни:</strong> ' + hours.toFixed(2) + '</p>' +
                 '<p><strong>📅 Рабочих дней:</strong> ' + days.toFixed(1) + '</p>' +
@@ -99,7 +87,21 @@
             document.getElementById('resultBox').classList.remove('hidden');
         }
 
-        async function openCamera() {
+        function openCamera() {
+            document.getElementById('cameraInput').click();
+        }
+
+        function onFileSelected(input) {
+            if (input.files && input.files[0]) {
+                let price = prompt('📸 Введите цену с ценника:', '');
+                if (price) {
+                    document.getElementById('price').value = price;
+                    calculate(+price);
+                }
+            }
+        }
+
+        async function startLiveCamera() {
             let video = document.getElementById('video');
             video.classList.remove('hidden');
             document.getElementById('captureBtn').classList.remove('hidden');
@@ -107,17 +109,21 @@
                 stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 video.srcObject = stream;
             } catch(e) {
-                alert('Камера недоступна');
+                alert('Камера недоступна: ' + e.message);
             }
         }
 
         function capturePhoto() {
-            let price = prompt('Введите цену с ценника:');
+            let price = prompt('📸 Введите цену с ценника:', '');
             if (price) {
                 document.getElementById('price').value = price;
-                calculate();
+                calculate(+price);
             }
-            if (stream) { stream.getTracks().forEach(t => t.stop()); }
+            stopCamera();
+        }
+
+        function stopCamera() {
+            if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
             document.getElementById('video').classList.add('hidden');
             document.getElementById('captureBtn').classList.add('hidden');
         }
